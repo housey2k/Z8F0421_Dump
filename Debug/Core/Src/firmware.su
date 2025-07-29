@@ -1,0 +1,11 @@
+../Core/Src/firmware.c:35:6:delay_us	24	static
+../Core/Src/firmware.c:42:6:toggleXIN	8	static
+../Core/Src/firmware.c:50:6:setSelector	16	static
+../Core/Src/firmware.c:57:6:setPortADirectionInput	24	static
+../Core/Src/firmware.c:65:6:setPortADirectionOutput	24	static
+../Core/Src/firmware.c:74:6:writePortA	24	static
+../Core/Src/firmware.c:83:9:readPortA	16	static
+../Core/Src/firmware.c:93:6:sendOCD	16	static
+../Core/Src/firmware.c:99:6:enterBypassMode	8	static
+../Core/Src/firmware.c:106:9:readByte	24	static
+../Core/Src/firmware.c:127:6:fwmain	16	static

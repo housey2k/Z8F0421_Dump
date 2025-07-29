@@ -1,0 +1,11 @@
+../Core/Src/firmware.c:35:6:delay_us	2
+../Core/Src/firmware.c:42:6:toggleXIN	1
+../Core/Src/firmware.c:50:6:setSelector	1
+../Core/Src/firmware.c:57:6:setPortADirectionInput	1
+../Core/Src/firmware.c:65:6:setPortADirectionOutput	1
+../Core/Src/firmware.c:74:6:writePortA	2
+../Core/Src/firmware.c:83:9:readPortA	2
+../Core/Src/firmware.c:93:6:sendOCD	1
+../Core/Src/firmware.c:99:6:enterBypassMode	1
+../Core/Src/firmware.c:106:9:readByte	1
+../Core/Src/firmware.c:127:6:fwmain	2
