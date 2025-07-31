@@ -3,6 +3,7 @@
 
 #include "main.h"
 #include "stm32f1xx_hal.h"
+#include "usbd_cdc_if.h"
 
 // === ChatGPT: Pin definitions ===
 #define OCD_TX_Pin     GPIO_PIN_10   // ChatGPT: PB10 (USART3 TX -> Z8 DBG)
@@ -134,8 +135,11 @@ void fwmain(void) {
 
     for (uint16_t addr = 0x0000; addr < 0x1000; addr++) {
         uint8_t val = readByte(addr);
-        // ChatGPT: Save to RAM, USB, or EEPROM instead of USART3
-        // ChatGPT: Avoid writing to huart3 since it's shared with OCD line
+
+        char msg[32];
+        snprintf(msg, sizeof(msg), "%04X: %02X\r\n", addr, val);
+        CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
+        HAL_Delay(1);  // Optional: tiny delay to prevent USB overflow
     }
 }
 
