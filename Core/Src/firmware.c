@@ -1,244 +1,169 @@
-// firmware.c - Z8F0421 core dump using Flash Bypass Mode
-// HouseY2K: let's all unite and rape the Landis+Gyr engineer that thought it was a great idea to put read protection on the MCU
-
-#include "main.h"
-#include "stm32f1xx_hal.h"
+#include "firmware.h"
 #include "usbd_cdc_if.h"
+#include <string.h>
 
-// === ChatGPT: Pin definitions ===
-#define OCD_TX_Pin     GPIO_PIN_10   // ChatGPT: PB10 (USART3 TX -> Z8 DBG)
-#define OCD_TX_Port    GPIOB
-
-#define PORTA_Pins     GPIOA         // ChatGPT: PA0–PA7: Data/Addr/Control bus
-#define PORTA_MASK     0xFF
-
-#define SEL_B0_Pin     GPIO_PIN_8    // ChatGPT: PA8
-#define SEL_B1_Pin     GPIO_PIN_9    // ChatGPT: PA9
-#define SEL_C0_Pin     GPIO_PIN_10   // ChatGPT: PA10
-#define SEL_Port       GPIOA
-
-#define XIN_Pin        GPIO_PIN_4    // ChatGPT: PB4 -> XIN pin on target
-#define XIN_Port       GPIOB
-
-extern UART_HandleTypeDef huart3;
+// By HouseY2K
+// This code was mostly written by ChatGPT. I'm a terrible coder, but I understand what's going on and can ask most questions.
 
 // HouseY2K: you know i hate being formal. i hate order, i hate hierarchy. i'm freedom last boss, any formal shit was master gpt
 // HouseY2K: i would never be able to write this shit myself
 // HouseY2K: thank you, gpt 4.1-mini
 
 // HouseY2K: long live all the hardware hackers
-// HouseY2K: fuck Landis+Gyr
+// HouseY2K: everyone against Landis+Gyr
 
 // HouseY2K: fym unprofessional? I'm hacking this chip on femboy outfits, I'm not a pentester in a meeting room
 // HouseY2K: Let's all take fursuit pics for #FursuitFriday after we dump this shit right here
 
-// === ChatGPT: DWT Microsecond Delay ===
-void delay_us(uint32_t us) {
-    uint32_t start = DWT->CYCCNT;
-    uint32_t ticks = us * (SystemCoreClock / 1000000);
-    while ((DWT->CYCCNT - start) < ticks);
-}
 
-// === ChatGPT: Toggle XIN clock ===
-void toggleXIN() {
-    HAL_GPIO_TogglePin(XIN_Port, XIN_Pin);
-    delay_us(2);  // ChatGPT: short delay for edge detect
-    HAL_GPIO_TogglePin(XIN_Port, XIN_Pin);
-    delay_us(2);
-}
 
-// === ChatGPT: Selector set ===
-void setSelector(uint8_t sel) {
-    HAL_GPIO_WritePin(SEL_Port, SEL_B0_Pin, (sel & 0x01) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(SEL_Port, SEL_B1_Pin, (sel & 0x02) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(SEL_Port, SEL_C0_Pin, (sel & 0x04) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
+/* Definições rápidas para usar pinos do CubeMX */
+#define DIO_PORT GPIOA
+static const uint16_t DIO_PINS[8] = {
+    A0_Pin, A1_Pin, A2_Pin, A3_Pin,
+    A4_Pin, A5_Pin, A6_Pin, A7_Pin
+};
 
-// === ChatGPT: Port A I/O direction control ===
-void setPortADirectionInput(void) {
+#define SEL_PORT GPIOA
+#define SEL_B0_PIN B0_Pin
+#define SEL_B1_PIN B1_Pin
+#define SEL_C0_PIN C0_Pin
+
+#define CLK_PORT GPIOB
+#define CLK_PIN TARGET_CLK_Pin
+
+#define RESET_PORT GPIOB
+#define RESET_PIN TARGET_RESET_Pin
+
+extern UART_HandleTypeDef huart3;
+
+/* ===================== Funções de controle ===================== */
+static void dio_set_output(void) {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = 0xFF; // ChatGPT: PA0-PA7
+    GPIO_InitStruct.Pin = A0_Pin|A1_Pin|A2_Pin|A3_Pin|
+                          A4_Pin|A5_Pin|A6_Pin|A7_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(DIO_PORT, &GPIO_InitStruct);
+}
+
+static void dio_set_input(void) {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = A0_Pin|A1_Pin|A2_Pin|A3_Pin|
+                          A4_Pin|A5_Pin|A6_Pin|A7_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(PORTA_Pins, &GPIO_InitStruct);
+    HAL_GPIO_Init(DIO_PORT, &GPIO_InitStruct);
 }
 
-void setPortADirectionOutput(void) {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = 0xFF; // ChatGPT: PA0-PA7
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(PORTA_Pins, &GPIO_InitStruct);
-}
-
-// === ChatGPT: Write to bus ===
-void writePortA(uint8_t data) {
-    setPortADirectionOutput();
+static void dio_write(uint8_t val) {
     for (int i = 0; i < 8; i++) {
-        HAL_GPIO_WritePin(PORTA_Pins, (1 << i), (data & (1 << i)) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(DIO_PORT, DIO_PINS[i], (val & (1 << i)) ? GPIO_PIN_SET : GPIO_PIN_RESET);
     }
-    toggleXIN();
 }
 
-// === ChatGPT: Read from bus ===
-uint8_t readPortA(void) {
-    setPortADirectionInput();
+static uint8_t dio_read(void) {
     uint8_t val = 0;
     for (int i = 0; i < 8; i++) {
-        val |= (HAL_GPIO_ReadPin(PORTA_Pins, (1 << i)) ? 1 : 0) << i;
+        if (HAL_GPIO_ReadPin(DIO_PORT, DIO_PINS[i]) == GPIO_PIN_SET)
+            val |= (1 << i);
     }
     return val;
 }
 
-// === ChatGPT: Send OCD command ===
-void sendOCD(uint8_t b) {
-    HAL_UART_Transmit(&huart3, &b, 1, HAL_MAX_DELAY);
-    delay_us(100); // ChatGPT: Allow sync
+static void sel_write(uint8_t b1, uint8_t b0, uint8_t c0) {
+    HAL_GPIO_WritePin(SEL_PORT, SEL_B1_PIN, b1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(SEL_PORT, SEL_B0_PIN, b0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(SEL_PORT, SEL_C0_PIN, c0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-// === ChatGPT: Enter Flash Bypass Mode ===
-void enterBypassMode() {
-    sendOCD(0x80); // ChatGPT: Autobaud
-    sendOCD(0xF0); // ChatGPT: Write Testmode
-    sendOCD(0x04); // ChatGPT: Enable bypass
+static void clk_pulse(void) {
+    HAL_GPIO_WritePin(CLK_PORT, CLK_PIN, GPIO_PIN_SET);
+    __NOP(); __NOP();
+    HAL_GPIO_WritePin(CLK_PORT, CLK_PIN, GPIO_PIN_RESET);
+    __NOP(); __NOP();
 }
 
-// === ChatGPT: Read byte from Flash ===
-uint8_t readByte(uint16_t addr) {
-    setSelector(0x00);  // ChatGPT: XADDR (hi)
-    writePortA(addr >> 8);
-
-    setSelector(0x01);  // ChatGPT: YADDR (lo)
-    writePortA(addr & 0xFF);
-
-    setSelector(0x03);  // ChatGPT: Control signals
-    writePortA(0xF0);   // ChatGPT: XE | YE | SE | OE | TEST1
-
-    delay_us(1);        // ChatGPT: settle
-    setSelector(0x05);  // ChatGPT: DOUT
-    uint8_t val = readPortA();
-
-    setSelector(0x03);
-    writePortA(0x00);   // ChatGPT: clear control
-
-    return val;
+static void target_reset_assert(void) {
+    HAL_GPIO_WritePin(RESET_PORT, RESET_PIN, GPIO_PIN_RESET);
 }
 
-// === ChatGPT: Main firmware logic ===
-void fwmain(void) {
-    // ChatGPT: Enable DWT cycle counter for delay_us
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CYCCNT = 0;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+static void target_reset_release(void) {
+    HAL_GPIO_WritePin(RESET_PORT, RESET_PIN, GPIO_PIN_SET);
+}
 
-    enterBypassMode();
-
-    for (uint16_t addr = 0x0000; addr < 0x1000; addr++) {
-        uint8_t val = readByte(addr);
-
-        char msg[32];
-        snprintf(msg, sizeof(msg), "%04X: %02X\r\n", addr, val);
-        CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
-        HAL_Delay(1);  // Optional: tiny delay to prevent USB overflow
+/* ===================== Sequência de bypass ===================== */
+static void send_bypass_sequence(void) {
+    uint8_t seq[] = {0x80, 0xF0, 0x04};
+    target_reset_assert();
+    HAL_Delay(5);
+    target_reset_release();
+    HAL_Delay(5);
+    for (int i = 0; i < 3; i++) {
+        HAL_UART_Transmit(&huart3, &seq[i], 1, HAL_MAX_DELAY);
+        HAL_Delay(2);
     }
 }
 
-/*
-(Throw your hands up)
-(Throw your, your hands up)
-Ladies and gentlemen! (Throw your, throw, throw your)
-(Throw your, your, your hands, your, your hands up)
-(Throw your hands up)
-Chocolate Starfish!
-(Your hands up)
-Wanna keep on rollin', baby!
-(Throw, your hands up)
-(Throw your hands up)
-(Throw your hands up)
+/* ===================== Seletores modo BYPASS ===================== */
+#define SEL_ADDRL()  sel_write(0,0,0)
+#define SEL_ADDRH()  sel_write(0,0,1)
+#define SEL_DIN()    sel_write(0,1,0)
+#define SEL_DOUT()   sel_write(0,1,1)
+#define SEL_CTRL()   sel_write(1,0,0)
+#define SEL_STATUS() sel_write(1,0,1)
 
-I move in, now move out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Breathe in, now breathe out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Keep rollin', rollin', rollin', rollin' (what?)
-Keep rollin', rollin', rollin', rollin' (come on!)
-Keep rollin', rollin', rollin', rollin' (yeah!)
-Keep rollin', rollin', rollin', rollin'
+/* ===================== Leitura de 1 byte ===================== */
+static uint8_t read_byte(uint16_t addr) {
+    uint8_t lo = addr & 0xFF;
+    uint8_t hi = (addr >> 8) & 0xFF;
+    uint8_t data;
 
-Now I know y'all be lovin' this shit right here
-L.I.M.P. bizkit is right here
-People in the house put them hands in the air
-'Cause if you don't care, then we don't care (yeah!)
-One, two, three times, two to the six
-Jonesin' your fix of that Limp Bizkit mix
-So where the fuck you at, punk? Shut the fuck up!
-And back the fuck up while we fuck this track up
+    SEL_ADDRL();
+    dio_set_output();
+    dio_write(lo);
+    for (int i = 0; i < 8; i++) clk_pulse();
 
-(Throw your hands up)
-(Throw, your hands up)
-(Throw, throw your hands up)
-(Throw your hands up)
-(Throw your hands up)
+    SEL_ADDRH();
+    dio_write(hi);
+    for (int i = 0; i < 8; i++) clk_pulse();
 
-You wanna mess with Limp Bizkit? (Yeah)
-You can't mess with Limp Bizkit (why?)
-Because we get it on (when?)
-Everyday and every night, oh
-And this platinum thing right here (uh-huh?)
-Yo, we're doin' it all the time (what?)
-So you better get some better beats and, ah
-Get some better rhymes (d'oh!)
-We got the gang set, so don't complain yet
-Twenty-four-seven, never beggin' for a rain check
-Old school soldiers blastin' out the hot shit
-That rock shit, puttin' bounce in the mosh pit
+    SEL_DOUT();
+    dio_set_input();
+    for (int i = 0; i < 8; i++) clk_pulse();
+    data = dio_read();
 
-(Throw your hands up)
-(Throw, your hands up)
-(Throw, throw your hands up)
-(Throw your hands up)
-(Throw your hands up)
+    return data;
+}
 
-Hey, ladies! (Where you at?)
-Hey, fellas! (Where you at?)
-And the people that don't give a fuck! (Where you at?)
-All the lovers! (Where you at?)
-All the haters! (Where you at?)
-And all the people that call themselves players (where you at?)
-Hot mamas! (Where you at?)
-Pimp daddies! (Where you at?)
-And the people rollin' up in caddies! (Where you at?)
-Hey, rockers! (Where you at?)
-Hip-hoppers! (Where you at?)
-And everybody all around the world!
+/* ===================== Dump ===================== */
+static void dump_flash(uint16_t start, uint16_t end) {
+    uint8_t buf[64];
+    uint16_t ptr = 0;
 
-Move in, now move out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Breathe in, now breathe out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Keep rollin', rollin', rollin', rollin' (yeah!)
-Keep rollin', rollin', rollin', rollin' (what!)
-Keep rollin', rollin', rollin', rollin' (come on!)
-Keep rollin', rollin', rollin', rollin'
+    for (uint16_t addr = start; addr <= end; addr++) {
+        buf[ptr++] = read_byte(addr);
+        if (ptr >= sizeof(buf)) {
+            while (CDC_Transmit_FS(buf, ptr) == USBD_BUSY) {}
+            ptr = 0;
+        }
+    }
+    if (ptr > 0) {
+        while (CDC_Transmit_FS(buf, ptr) == USBD_BUSY) {}
+    }
+}
 
-Move in, now move out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Breathe in, now breathe out!
-Hands up, now hands down!
-Back up, back up!
-Tell me what you're gonna do now!
-Keep rollin', rollin', rollin', rollin' (what?)
-Keep rollin', rollin', rollin', rollin' (come on!)
-Keep rollin', rollin', rollin', rollin' (yeah!)
-Keep rollin', rollin', rollin', rollin'
- */
+/* ===================== Entradas públicas ===================== */
+void fwsetup(void) {
+    HAL_Delay(10);
+    send_bypass_sequence();
+    HAL_Delay(20);
+}
+
+void fwloop(void) {
+    dump_flash(0x0000, 0x07FF); // exemplo: 2KB
+    while (1) {
+        HAL_Delay(1000);
+    }
+}

@@ -1,0 +1,33 @@
+# Build results and temporary files
+Debug/
+Release/
+build/
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+*.suo
+*.user
+*.userprefs
+*.sln.docstates
+.vs/
+
+# IDE-specific settings and metadata
+.metadata/
+.settings/
+.project
+.cproject
+*.launch
+
+# Generated code and libraries (if not managed as submodules)
+# If you are using CubeMX to generate code and prefer to keep the generated code
+# out of version control, you can uncomment or add specific paths here.
+# For example:
+# Core/Src/
+# Drivers/STM32F4xx_HAL_Driver/
+# Middlewares/
+
+# Other temporary files
+*.bak
+*.tmp

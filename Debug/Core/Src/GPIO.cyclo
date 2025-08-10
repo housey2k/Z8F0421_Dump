@@ -1,4 +1,0 @@
-../Core/Src/GPIO.c:14:6:resetPulse	1
-../Core/Src/GPIO.c:20:6:sendBypassCommand	1
-../Core/Src/GPIO.c:25:6:dbgSetLow	1
-../Core/Src/GPIO.c:40:6:dbgSetUART	2
