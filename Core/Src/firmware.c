@@ -5,17 +5,6 @@
 // By HouseY2K
 // This code was mostly written by ChatGPT. I'm a terrible coder, but I understand what's going on and can ask most questions.
 
-// HouseY2K: you know i hate being formal. i hate order, i hate hierarchy. i'm freedom last boss, any formal shit was master gpt
-// HouseY2K: i would never be able to write this shit myself
-// HouseY2K: thank you, gpt 4.1-mini
-
-// HouseY2K: long live all the hardware hackers
-// HouseY2K: everyone against Landis+Gyr
-
-// HouseY2K: fym unprofessional? I'm hacking this chip on femboy outfits, I'm not a pentester in a meeting room
-// HouseY2K: Let's all take fursuit pics for #FursuitFriday after we dump this shit right here
-
-
 
 /* Definições rápidas para usar pinos do CubeMX */
 #define DIO_PORT GPIOA
