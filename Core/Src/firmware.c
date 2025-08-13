@@ -3,7 +3,7 @@
 #include <string.h>
 
 // By HouseY2K
-// This code was mostly written by ChatGPT. I'm a terrible coder, but I understand what's going on and can ask most questions.
+// This code was mostly written by ChatGPT. I'm a terrible coder, but I understand what's going on and can answer most questions.
 
 
 /* Definições rápidas para usar pinos do CubeMX */
