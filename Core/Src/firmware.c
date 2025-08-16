@@ -2,11 +2,8 @@
 #include "usbd_cdc_if.h"
 #include <string.h>
 
-// By HouseY2K
-// This code was mostly written by ChatGPT. I'm a terrible coder, but I understand what's going on and can answer most questions.
 
-
-/* Definições rápidas para usar pinos do CubeMX */
+/* CubeMX pin definitions*/
 #define DIO_PORT GPIOA
 static const uint16_t DIO_PINS[8] = {
     A0_Pin, A1_Pin, A2_Pin, A3_Pin,
@@ -134,12 +131,12 @@ static void read(uint16_t begin, uint16_t end)
 
         // send out over USB CDC
         CDC_Transmit_FS(&val, 1);
-
-        // --- recovery ---
-        sel_write(1, 1, 1);                  // SEL=0x07 (Hi-Z)
-        dio_set_input();
-        HAL_Delay(1);                        // 1 µs recovery
     }
+
+    // Rd Loop Done
+    sel_write(1, 1, 1);                  // SEL=0x07
+    dio_set_input();                     // Hi-Z
+    HAL_Delay(1);                        // 1 µs recovery
 }
 
 
