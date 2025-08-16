@@ -73,18 +73,18 @@ void Error_Handler(void);
 #define A6_GPIO_Port GPIOA
 #define A7_Pin GPIO_PIN_7
 #define A7_GPIO_Port GPIOA
+#define TARGET_CLK_Pin GPIO_PIN_0
+#define TARGET_CLK_GPIO_Port GPIOB
+#define TARGET_RESET_Pin GPIO_PIN_1
+#define TARGET_RESET_GPIO_Port GPIOB
 #define UART_DBG_Pin GPIO_PIN_10
 #define UART_DBG_GPIO_Port GPIOB
-#define TARGET_RESET_Pin GPIO_PIN_11
-#define TARGET_RESET_GPIO_Port GPIOB
 #define B0_Pin GPIO_PIN_8
 #define B0_GPIO_Port GPIOA
 #define B1_Pin GPIO_PIN_9
 #define B1_GPIO_Port GPIOA
 #define C0_Pin GPIO_PIN_10
 #define C0_GPIO_Port GPIOA
-#define TARGET_CLK_Pin GPIO_PIN_4
-#define TARGET_CLK_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
